@@ -1,0 +1,173 @@
+name: '[Build & Push] Bitnami Containers'
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'bitnami/**'
+  workflow_dispatch:
+    inputs:
+      containers:
+        description: 'Containers to build (comma-separated, e.g., wordpress,keycloak). Leave empty for all.'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    name: Detect Changed Containers
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed containers or use manual input
+        id: set-matrix
+        run: |
+          # Define all available containers with their versions
+          declare -A containers
+          containers["wordpress"]="6.8.2"
+          containers["keycloak"]="26.4.7"
+          containers["keycloak-config-cli"]="6.4.0"
+          containers["os-shell"]="12"
+
+          # Determine which containers to build
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.containers }}" ]; then
+            # Manual trigger with specific containers
+            IFS=',' read -ra MANUAL_CONTAINERS <<< "${{ inputs.containers }}"
+            BUILD_CONTAINERS=("${MANUAL_CONTAINERS[@]}")
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual trigger without input - build all
+            BUILD_CONTAINERS=("${!containers[@]}")
+          else
+            # Auto trigger - detect changed containers
+            changed_files=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^bitnami/' || true)
+            BUILD_CONTAINERS=()
+            for container in "${!containers[@]}"; do
+              if echo "$changed_files" | grep -q "^bitnami/${container}/"; then
+                BUILD_CONTAINERS+=("$container")
+              fi
+            done
+
+            # If no containers changed, exit
+            if [ ${#BUILD_CONTAINERS[@]} -eq 0 ]; then
+              echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          fi
+
+          # Build the matrix JSON
+          matrix_json="{"
+          matrix_json+="\"include\":["
+          first=true
+
+          for container in "${BUILD_CONTAINERS[@]}"; do
+            # Trim whitespace
+            container=$(echo "$container" | xargs)
+
+            if [ -z "${containers[$container]}" ]; then
+              echo "Warning: Unknown container '$container', skipping"
+              continue
+            fi
+
+            version="${containers[$container]}"
+            major=$(echo "$version" | cut -d. -f1)
+
+            # Find the Dockerfile path
+            dockerfile_path=$(find bitnami/${container} -name "Dockerfile" -type f | head -n 1)
+            if [ -z "$dockerfile_path" ]; then
+              echo "Warning: No Dockerfile found for $container, skipping"
+              continue
+            fi
+
+            context_path=$(dirname "$dockerfile_path")
+
+            if [ "$first" = false ]; then
+              matrix_json+=","
+            fi
+            first=false
+
+            # Build tags array
+            tags="\"${{ secrets.DOCKER_REGISTRY }}/${container}:${version}\","
+            tags+="\"${{ secrets.DOCKER_REGISTRY }}/${container}:${major}\","
+            tags+="\"${{ secrets.DOCKER_REGISTRY }}/${container}:latest\""
+
+            matrix_json+="{"
+            matrix_json+="\"name\":\"${container}\","
+            matrix_json+="\"version\":\"${version}\","
+            matrix_json+="\"major\":\"${major}\","
+            matrix_json+="\"context\":\"${context_path}\","
+            matrix_json+="\"tags\":[$tags]"
+            matrix_json+="}"
+          done
+
+          matrix_json+="]}"
+
+          echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
+          echo "Building containers: ${BUILD_CONTAINERS[*]}"
+          echo "Matrix JSON: $matrix_json"
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    name: Build ${{ matrix.name }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.matrix != '{"include":[]}'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_REGISTRY }}/${{ matrix.name }}
+          tags: |
+            type=raw,value=${{ matrix.version }}
+            type=raw,value=${{ matrix.major }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.context }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ join(matrix.tags, ',') }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.name }}
+            org.opencontainers.image.version=${{ matrix.version }}
+            org.opencontainers.image.vendor=Broadcom, Inc.
+
+      - name: Build Summary
+        run: |
+          echo "### ✅ Successfully built ${{ matrix.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ matrix.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ join(matrix.tags, '\n') }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

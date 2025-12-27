@@ -1,4 +1,4 @@
-# Copyright Broadcom, Inc. All Rights Reserved.
+# Copyright EJB TECHSOLUTIONS, LLC. All Rights Reserved.
 # SPDX-License-Identifier: APACHE-2.0
 
 FROM docker.io/bitnami/minideb:bookworm
@@ -8,11 +8,11 @@ ARG TARGETARCH
 
 LABEL org.opencontainers.image.base.name="docker.io/bitnami/minideb:bookworm" \
       org.opencontainers.image.created="2025-12-06T05:10:02Z" \
-      org.opencontainers.image.description="Application packaged by Broadcom, Inc." \
-      org.opencontainers.image.documentation="https://github.com/bitnami/containers/tree/main/bitnami/os-shell/README.md" \
-      org.opencontainers.image.source="https://github.com/bitnami/containers/tree/main/bitnami/os-shell" \
+      org.opencontainers.image.description="Application packaged by EJB TECHSOLUTIONS, LLC" \
+      org.opencontainers.image.documentation="https://github.com/lemonprogis/containers/tree/main/bitnami/os-shell/README.md" \
+      org.opencontainers.image.source="https://github.com/lemonprogis/containers/tree/main/bitnami/os-shell" \
       org.opencontainers.image.title="os-shell" \
-      org.opencontainers.image.vendor="Broadcom, Inc." \
+      org.opencontainers.image.vendor="EJB TECHSOLUTIONS, LLC" \
       org.opencontainers.image.version="12"
 
 ENV HOME="/" \
