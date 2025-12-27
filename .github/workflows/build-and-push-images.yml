@@ -40,6 +40,8 @@ jobs:
             ${{ secrets.DOCKER_REGISTRY }}/wordpress:latest
           cache-from: type=gha,scope=wordpress
           cache-to: type=gha,mode=max,scope=wordpress
+          sbom: true
+          provenance: true
 
   build-keycloak:
     runs-on: ubuntu-latest
@@ -69,6 +71,8 @@ jobs:
             ${{ secrets.DOCKER_REGISTRY }}/keycloak:latest
           cache-from: type=gha,scope=keycloak
           cache-to: type=gha,mode=max,scope=keycloak
+          sbom: true
+          provenance: true
 
   build-keycloak-config-cli:
     runs-on: ubuntu-latest
@@ -98,6 +102,8 @@ jobs:
             ${{ secrets.DOCKER_REGISTRY }}/keycloak-config-cli:latest
           cache-from: type=gha,scope=keycloak-config-cli
           cache-to: type=gha,mode=max,scope=keycloak-config-cli
+          sbom: true
+          provenance: true
 
   build-os-shell:
     runs-on: ubuntu-latest
@@ -126,3 +132,5 @@ jobs:
             ${{ secrets.DOCKER_REGISTRY }}/os-shell:latest
           cache-from: type=gha,scope=os-shell
           cache-to: type=gha,mode=max,scope=os-shell
+          sbom: true
+          provenance: true
