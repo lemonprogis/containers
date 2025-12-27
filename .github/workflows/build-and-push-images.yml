@@ -114,10 +114,17 @@ jobs:
 
           matrix_json+="]}"
 
-          echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
-          echo "has-changes=true" >> $GITHUB_OUTPUT
-          echo "Building containers: ${BUILD_CONTAINERS[*]}"
-          echo "Matrix JSON: $matrix_json"
+          # Check if we actually added any containers to the matrix
+          if [ "$first" = true ]; then
+            echo 'matrix={"include":[{"name":"none","version":"0","major":"0","context":".","tags":[]}]}' >> $GITHUB_OUTPUT
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+            echo "No valid containers found to build"
+          else
+            echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+            echo "Building containers: ${BUILD_CONTAINERS[*]}"
+            echo "Matrix JSON: $matrix_json"
+          fi
 
   build-and-push:
     runs-on: ubuntu-latest
