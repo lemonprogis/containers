@@ -7,133 +7,14 @@ on:
     paths:
       - 'bitnami/**'
   workflow_dispatch:
-    inputs:
-      containers:
-        description: 'Containers to build (comma-separated, e.g., wordpress,keycloak). Leave empty for all.'
-        required: false
-        type: string
-        default: ''
 
 permissions:
   contents: read
 
 jobs:
-  detect-changes:
+  build-wordpress:
     runs-on: ubuntu-latest
-    name: Detect Changed Containers
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      has-changes: ${{ steps.set-matrix.outputs.has-changes }}
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Detect changed containers or use manual input
-        id: set-matrix
-        run: |
-          # Define all available containers with their versions
-          declare -A containers
-          containers["wordpress"]="6.8.2"
-          containers["keycloak"]="26.4.7"
-          containers["keycloak-config-cli"]="6.4.0"
-          containers["os-shell"]="12"
-
-          # Determine which containers to build
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.containers }}" ]; then
-            # Manual trigger with specific containers
-            IFS=',' read -ra MANUAL_CONTAINERS <<< "${{ inputs.containers }}"
-            BUILD_CONTAINERS=("${MANUAL_CONTAINERS[@]}")
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # Manual trigger without input - build all
-            BUILD_CONTAINERS=("${!containers[@]}")
-          else
-            # Auto trigger - detect changed containers
-            changed_files=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^bitnami/' || true)
-            BUILD_CONTAINERS=()
-            for container in "${!containers[@]}"; do
-              if echo "$changed_files" | grep -q "^bitnami/${container}/"; then
-                BUILD_CONTAINERS+=("$container")
-              fi
-            done
-
-            # If no containers changed, output empty but valid matrix
-            if [ ${#BUILD_CONTAINERS[@]} -eq 0 ]; then
-              echo 'matrix={"include":[{"name":"none","version":"0","major":"0","context":".","tags":[]}]}' >> $GITHUB_OUTPUT
-              echo "has-changes=false" >> $GITHUB_OUTPUT
-              echo "No containers changed, skipping build"
-              exit 0
-            fi
-          fi
-
-          # Build the matrix JSON
-          matrix_json="{"
-          matrix_json+="\"include\":["
-          first=true
-
-          for container in "${BUILD_CONTAINERS[@]}"; do
-            # Trim whitespace
-            container=$(echo "$container" | xargs)
-
-            if [ -z "${containers[$container]}" ]; then
-              echo "Warning: Unknown container '$container', skipping"
-              continue
-            fi
-
-            version="${containers[$container]}"
-            major=$(echo "$version" | cut -d. -f1)
-
-            # Find the Dockerfile path
-            dockerfile_path=$(find bitnami/${container} -name "Dockerfile" -type f | head -n 1)
-            if [ -z "$dockerfile_path" ]; then
-              echo "Warning: No Dockerfile found for $container, skipping"
-              continue
-            fi
-
-            context_path=$(dirname "$dockerfile_path")
-
-            if [ "$first" = false ]; then
-              matrix_json+=","
-            fi
-            first=false
-
-            # Build tags array
-            tags="\"${{ secrets.DOCKER_REGISTRY }}/${container}:${version}\","
-            tags+="\"${{ secrets.DOCKER_REGISTRY }}/${container}:${major}\","
-            tags+="\"${{ secrets.DOCKER_REGISTRY }}/${container}:latest\""
-
-            matrix_json+="{"
-            matrix_json+="\"name\":\"${container}\","
-            matrix_json+="\"version\":\"${version}\","
-            matrix_json+="\"major\":\"${major}\","
-            matrix_json+="\"context\":\"${context_path}\","
-            matrix_json+="\"tags\":[$tags]"
-            matrix_json+="}"
-          done
-
-          matrix_json+="]}"
-
-          # Check if we actually added any containers to the matrix
-          if [ "$first" = true ]; then
-            echo 'matrix={"include":[{"name":"none","version":"0","major":"0","context":".","tags":[]}]}' >> $GITHUB_OUTPUT
-            echo "has-changes=false" >> $GITHUB_OUTPUT
-            echo "No valid containers found to build"
-          else
-            echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
-            echo "has-changes=true" >> $GITHUB_OUTPUT
-            echo "Building containers: ${BUILD_CONTAINERS[*]}"
-            echo "Matrix JSON: $matrix_json"
-          fi
-
-  build-and-push:
-    runs-on: ubuntu-latest
-    name: Build ${{ matrix.name }}
-    needs: detect-changes
-    if: needs.detect-changes.outputs.has-changes == 'true'
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    name: Build WordPress
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -141,44 +22,107 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Registry
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ secrets.DOCKER_REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.DOCKER_REGISTRY }}/${{ matrix.name }}
-          tags: |
-            type=raw,value=${{ matrix.version }}
-            type=raw,value=${{ matrix.major }}
-            type=raw,value=latest
-
-      - name: Build and push Docker image
+      - name: Build and push WordPress
         uses: docker/build-push-action@v5
         with:
-          context: ./${{ matrix.context }}
+          context: ./bitnami/wordpress/6/debian-12
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ join(matrix.tags, ',') }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
-          labels: |
-            org.opencontainers.image.title=${{ matrix.name }}
-            org.opencontainers.image.version=${{ matrix.version }}
-            org.opencontainers.image.vendor=Broadcom, Inc.
+          tags: |
+            ${{ secrets.DOCKER_REGISTRY }}/wordpress:6.8.2
+            ${{ secrets.DOCKER_REGISTRY }}/wordpress:6
+            ${{ secrets.DOCKER_REGISTRY }}/wordpress:latest
+          cache-from: type=gha,scope=wordpress
+          cache-to: type=gha,mode=max,scope=wordpress
 
-      - name: Build Summary
-        run: |
-          echo "### ✅ Successfully built ${{ matrix.name }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ matrix.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "${{ join(matrix.tags, '\n') }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+  build-keycloak:
+    runs-on: ubuntu-latest
+    name: Build Keycloak
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Keycloak
+        uses: docker/build-push-action@v5
+        with:
+          context: ./bitnami/keycloak/26/debian-12
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_REGISTRY }}/keycloak:26.4.7
+            ${{ secrets.DOCKER_REGISTRY }}/keycloak:26
+            ${{ secrets.DOCKER_REGISTRY }}/keycloak:latest
+          cache-from: type=gha,scope=keycloak
+          cache-to: type=gha,mode=max,scope=keycloak
+
+  build-keycloak-config-cli:
+    runs-on: ubuntu-latest
+    name: Build Keycloak Config CLI
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Keycloak Config CLI
+        uses: docker/build-push-action@v5
+        with:
+          context: ./bitnami/keycloak-config-cli/6/debian-12
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_REGISTRY }}/keycloak-config-cli:6.4.0
+            ${{ secrets.DOCKER_REGISTRY }}/keycloak-config-cli:6
+            ${{ secrets.DOCKER_REGISTRY }}/keycloak-config-cli:latest
+          cache-from: type=gha,scope=keycloak-config-cli
+          cache-to: type=gha,mode=max,scope=keycloak-config-cli
+
+  build-os-shell:
+    runs-on: ubuntu-latest
+    name: Build OS Shell
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push OS Shell
+        uses: docker/build-push-action@v5
+        with:
+          context: ./bitnami/os-shell/12/debian-12
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_REGISTRY }}/os-shell:12
+            ${{ secrets.DOCKER_REGISTRY }}/os-shell:latest
+          cache-from: type=gha,scope=os-shell
+          cache-to: type=gha,mode=max,scope=os-shell
