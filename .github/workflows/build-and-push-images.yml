@@ -58,10 +58,11 @@ jobs:
               fi
             done
 
-            # If no containers changed, exit
+            # If no containers changed, output empty but valid matrix
             if [ ${#BUILD_CONTAINERS[@]} -eq 0 ]; then
-              echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+              echo 'matrix={"include":[{"name":"none","version":"0","major":"0","context":".","tags":[]}]}' >> $GITHUB_OUTPUT
               echo "has-changes=false" >> $GITHUB_OUTPUT
+              echo "No containers changed, skipping build"
               exit 0
             fi
           fi
