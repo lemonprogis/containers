@@ -35,7 +35,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKER_REGISTRY }}/wordpress:6.8.2
+            ${{ secrets.DOCKER_REGISTRY }}/wordpress:6.9.0
             ${{ secrets.DOCKER_REGISTRY }}/wordpress:6
             ${{ secrets.DOCKER_REGISTRY }}/wordpress:latest
           cache-from: type=gha,scope=wordpress
@@ -66,7 +66,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKER_REGISTRY }}/keycloak:26.4.7
+            ${{ secrets.DOCKER_REGISTRY }}/keycloak:26.0.7
             ${{ secrets.DOCKER_REGISTRY }}/keycloak:26
             ${{ secrets.DOCKER_REGISTRY }}/keycloak:latest
           cache-from: type=gha,scope=keycloak
