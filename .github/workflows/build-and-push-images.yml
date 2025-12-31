@@ -35,73 +35,11 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKER_REGISTRY }}/wordpress:6.9.0
+            ${{ secrets.DOCKER_REGISTRY }}/wordpress:6.8.2
             ${{ secrets.DOCKER_REGISTRY }}/wordpress:6
             ${{ secrets.DOCKER_REGISTRY }}/wordpress:latest
           cache-from: type=gha,scope=wordpress
           cache-to: type=gha,mode=max,scope=wordpress
-          sbom: true
-          provenance: true
-
-  build-keycloak:
-    runs-on: ubuntu-latest
-    name: Build Keycloak
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and push Keycloak
-        uses: docker/build-push-action@v5
-        with:
-          context: ./bitnami/keycloak/26/debian-12
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_REGISTRY }}/keycloak:26.0.7
-            ${{ secrets.DOCKER_REGISTRY }}/keycloak:26
-            ${{ secrets.DOCKER_REGISTRY }}/keycloak:latest
-          cache-from: type=gha,scope=keycloak
-          cache-to: type=gha,mode=max,scope=keycloak
-          sbom: true
-          provenance: true
-
-  build-keycloak-config-cli:
-    runs-on: ubuntu-latest
-    name: Build Keycloak Config CLI
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and push Keycloak Config CLI
-        uses: docker/build-push-action@v5
-        with:
-          context: ./bitnami/keycloak-config-cli/6/debian-12
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_REGISTRY }}/keycloak-config-cli:6.4.0
-            ${{ secrets.DOCKER_REGISTRY }}/keycloak-config-cli:6
-            ${{ secrets.DOCKER_REGISTRY }}/keycloak-config-cli:latest
-          cache-from: type=gha,scope=keycloak-config-cli
-          cache-to: type=gha,mode=max,scope=keycloak-config-cli
           sbom: true
           provenance: true
 
